@@ -198,7 +198,7 @@ object CloudTrailToSQL extends Serializable {
     * @param sc the Spark Context
     * @param sqlContext the SQL Context
     * @return a DataFrame that represents all your CloudTrail logs*/
-  def createTable(spark:SparkSession):DataFrame = {
+  def createTable(sc:SparkContext, spark:SparkSession):DataFrame = {
     val rawCloudTrailData:RDD[String] = loadFromS3(sc)
     val individualCloudTrailEvents:RDD[String] = readCloudtrailRecordsFromRDD(rawCloudTrailData)
     val cloudtrailRecordsDataFrame:DataFrame = spark.read.json(individualCloudTrailEvents)
