@@ -9,7 +9,7 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.{DataFrame, SQLContext}
 import org.apache.spark.SparkContext
-import org.apache.spark.internal.Logging
+import org.apache.log4j.Logger
 import com.amazonaws.regions.Region
 import scala.collection.mutable
 import scala.collection.mutable.Buffer
@@ -47,7 +47,9 @@ import scala.collection.JavaConversions._
   * 5. Run any SQL query you want over the data, e.g.
     sqlContext.sql("select distinct eventSource, eventName, userIdentity.principalId from cloudtrail where userIdentity.principalId = userIdentity.accountId").show(99999) //Find services and APIs called with root credentials
   */
-object CloudTrailToSQL extends Logging {
+object CloudTrailToSQL extends Serializable {
+  @transient lazy val log = Logger.getLogger(getClass.getName)
+  
   private val cloudTrailDatabaseName = "cloudtrail"
   private val cloudTrailTableName = "cloudtrail"
   
@@ -60,30 +62,30 @@ object CloudTrailToSQL extends Logging {
     //For each AWS region, find the CloudTrail trails in that region.
     RegionUtils.getRegions.foreach((region:Region) => {
       try {
-        logInfo("Looking for CloudTrail trails in " + region)
+        CloudTrailToSQL.log.info("Looking for CloudTrail trails in " + region)
         val ct = new AWSCloudTrailClient
         ct.setRegion(region)
 
         val trails = ct.describeTrails().getTrailList  //Retrieve the list of trails (usually 1 or 0)
         if (trails.size() > 0) {
-          logInfo("Trails found: " + trails)
+          CloudTrailToSQL.log.info("Trails found: " + trails)
           trails.foreach((trail: Trail) => {
             trailSet.add((trail.getS3BucketName, trail.getS3KeyPrefix))
           })
         }
         else {
-          logError("No CloudTrail trail configured in " + region + ".  Go turn Cloudtrail on!")
+           CloudTrailToSQL.log.error("No CloudTrail trail configured in " + region + ".  Go turn Cloudtrail on!")
         }
       }
       catch {
         case e: java.lang.Throwable => {
-          logError("Problem with region: " + region + ". Error: " + e)
+          CloudTrailToSQL.log.error("Problem with region: " + region + ". Error: " + e)
           Iterator.empty
         }
       }
     })
 
-    logInfo("Found " + trailSet.size + " S3 buckets and prefixed to explore (after removing duplicates)")
+    CloudTrailToSQL.log.info("Found " + trailSet.size + " S3 buckets and prefixed to explore (after removing duplicates)")
     trailSet
   }
 
@@ -114,22 +116,22 @@ object CloudTrailToSQL extends Logging {
     * creating a new client.  However, to keep it simple, we're just going to stick with one client per bucket. */
     val s3 = new AmazonS3Client  
 
-    logInfo("Looking in " + bucket + "/" + prefix + " (null means there's no prefix) for CloudTrail logs")
+    CloudTrailToSQL.log.info("Looking in " + bucket + "/" + prefix + " (null means there's no prefix) for CloudTrail logs")
     var objectList = s3.listObjects(bucket, prefix)
 
     if (objectList.getObjectSummaries.size() > 0) {
       val cloudTrailS3Objects = getCloudTrailS3Keys(objectList.getObjectSummaries) //Get the first batch
 
       while (objectList.isTruncated) { //If there is more data to be retrieved...
-        logInfo("Looking for another batch of S3 objects...")
+        CloudTrailToSQL.log.info("Looking for another batch of S3 objects...")
         objectList = s3.listNextBatchOfObjects(objectList) //... get the next batch ...
         cloudTrailS3Objects ++= getCloudTrailS3Keys(objectList.getObjectSummaries) //... and add it to the original batch
       }
-      logInfo("Found " + cloudTrailS3Objects.size + " S3 objects with CloudTrail data")
+      CloudTrailToSQL.log.info("Found " + cloudTrailS3Objects.size + " S3 objects with CloudTrail data")
       cloudTrailS3Objects.map((key:String) => (bucket, key)) //We will need to bucket later, so add it.
     }
     else {
-      logError("No S3 objects found! bucket=" + bucket + " prefix=" + prefix)
+      CloudTrailToSQL.log.error("No S3 objects found! bucket=" + bucket + " prefix=" + prefix)
       Buffer.empty
     }
   }
