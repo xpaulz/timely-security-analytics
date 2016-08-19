@@ -53,8 +53,7 @@ import org.apache.spark.sql.SQLContext
   * 5. Run any SQL query you want over the data, e.g.
     sqlContext.sql("select distinct eventSource, eventName, userIdentity.principalId from cloudtrail where userIdentity.principalId = userIdentity.accountId").show(99999) //Find services and APIs called with root credentials
   */
-val spark=SparkSession.builder().appName("CloudTrailInjest").enableHiveSupport.getOrCreate()
-  
+
 object CloudTrailToSQL extends Serializable {
   @transient lazy val log = Logger.getLogger(getClass.getName)
   
