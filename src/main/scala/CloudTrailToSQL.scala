@@ -1,3 +1,4 @@
+
 sc.setLogLevel("Info")
 
 import java.util.zip.GZIPInputStream
@@ -45,8 +46,8 @@ import org.apache.spark.sql.SQLContext
       spark-shell --master yarn-client --num-executors 40 --conf spark.executor.cores=2
   * 3. Cut and paste all of this code into your Spark Shell (once the scala> prompt is available)
   * 4. Run the following commands:
-      var cloudtrail = CloudTrailToSQL.createTable(sc, sqlContext) //creates and registers the Spark SQL table
-      CloudTrailToSQL.runSampleQuery(sqlContext) //runs a sample query
+      var cloudtrail = CloudTrailToSQL.createTable(sc, spark) //creates and registers the Spark SQL table
+      CloudTrailToSQL.runSampleQuery(spark) //runs a sample query
 
     Note that these commands will take some time to run as they load your CloudTrail data from S3 and store it in-memory
      on the Spark cluster.  Run the sample query again and you'll see the speed up that the in-memory caching provides.
@@ -209,6 +210,7 @@ object CloudTrailToSQL extends Serializable {
   }
 
   def createHiveTable(sc:SparkContext, spark:SparkSession):DataFrame = {
+    SparkSession.builder.enableHiveSupport.getOrCreate
     // require(hiveContext.isInstanceOf[HiveContext], "You must pass a SQL context that is a HiveContext.  Use the sqlContext val created for you.")
     val rawCloudTrailData = loadFromS3(sc)
     val individualCloudTrailEvents = readCloudtrailRecordsFromRDD(rawCloudTrailData)
