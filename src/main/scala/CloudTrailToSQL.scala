@@ -8,8 +8,9 @@ import com.amazonaws.services.s3.AmazonS3Client
 import com.amazonaws.services.s3.model.S3ObjectSummary
 import com.fasterxml.jackson.databind.{ObjectMapper, JsonNode}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.sql.hive.HiveContext
-import org.apache.spark.sql.{DataFrame, SQLContext}
+import org.apache.spark.sql.SparkSession
+import spark.implicits._
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.SparkContext
 import org.apache.log4j.Logger
 import com.amazonaws.regions.Region
@@ -17,6 +18,9 @@ import scala.collection.mutable
 import scala.collection.mutable.Buffer
 import scala.io.Source
 import scala.collection.JavaConversions._
+
+import org.apache.spark.sql.hive.HiveContext
+import org.apache.spark.sql.SQLContext
 
 /*Copyright 2015 Amazon.com, Inc. or its affiliates. All Rights Reserved.
 
@@ -49,6 +53,8 @@ import scala.collection.JavaConversions._
   * 5. Run any SQL query you want over the data, e.g.
     sqlContext.sql("select distinct eventSource, eventName, userIdentity.principalId from cloudtrail where userIdentity.principalId = userIdentity.accountId").show(99999) //Find services and APIs called with root credentials
   */
+val spark=SparkSession.builder().appName("CloudTrailInjest").enableHiveSupport.getOrCreate()
+  
 object CloudTrailToSQL extends Serializable {
   @transient lazy val log = Logger.getLogger(getClass.getName)
   
@@ -192,10 +198,10 @@ object CloudTrailToSQL extends Serializable {
     * @param sc the Spark Context
     * @param sqlContext the SQL Context
     * @return a DataFrame that represents all your CloudTrail logs*/
-  def createTable(sc:SparkContext, sqlContext:SQLContext):DataFrame = {
+  def createTable(spark:SparkSession):DataFrame = {
     val rawCloudTrailData:RDD[String] = loadFromS3(sc)
     val individualCloudTrailEvents:RDD[String] = readCloudtrailRecordsFromRDD(rawCloudTrailData)
-    val cloudtrailRecordsDataFrame:DataFrame = sqlContext.read.json(individualCloudTrailEvents)
+    val cloudtrailRecordsDataFrame:DataFrame = spark.read.json(individualCloudTrailEvents)
     cloudtrailRecordsDataFrame.cache() //After your first query, all data will be cached in memory
 
     //Enable querying as the given table name via the SQL context
@@ -203,18 +209,18 @@ object CloudTrailToSQL extends Serializable {
     cloudtrailRecordsDataFrame
   }
 
-  def createHiveTable(sc:SparkContext, hiveContext:SQLContext):DataFrame = {
-    require(hiveContext.isInstanceOf[HiveContext], "You must pass a SQL context that is a HiveContext.  Use the sqlContext val created for you.")
+  def createHiveTable(sc:SparkContext, spark:SparkSession):DataFrame = {
+    // require(hiveContext.isInstanceOf[HiveContext], "You must pass a SQL context that is a HiveContext.  Use the sqlContext val created for you.")
     val rawCloudTrailData = loadFromS3(sc)
     val individualCloudTrailEvents = readCloudtrailRecordsFromRDD(rawCloudTrailData)
-    val hiveCloudTrailDataFrame = hiveContext.read.json(individualCloudTrailEvents)
+    val hiveCloudTrailDataFrame = spark.read.json(individualCloudTrailEvents)
     hiveCloudTrailDataFrame.cache()
     hiveCloudTrailDataFrame.write.saveAsTable(cloudTrailDatabaseName + "." + cloudTrailTableName+"_hive")
     hiveCloudTrailDataFrame
   }
 
-  def runSampleQuery(sqlContext:SQLContext) = {
-    sqlContext.sql("use " + cloudTrailDatabaseName + "; select distinct userIdentity.principalId, sourceIPAddress, userIdentity.accessKeyId from " + cloudTrailDatabaseName + "." + cloudTrailTableName + " order by accessKeyId").show(10000)
+  def runSampleQuery(spark:SparkSession) = {
+    spark.sql("use " + cloudTrailDatabaseName + "; select distinct userIdentity.principalId, sourceIPAddress, userIdentity.accessKeyId from " + cloudTrailDatabaseName + "." + cloudTrailTableName + " order by accessKeyId").show(10000)
   }
 
   private def isCompressedJson(name:String):Boolean = {
