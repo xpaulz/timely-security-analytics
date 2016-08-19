@@ -1,3 +1,5 @@
+sc.setLogLevel("Info")
+
 import java.util.zip.GZIPInputStream
 import com.amazonaws.regions.RegionUtils
 import com.amazonaws.services.cloudtrail.AWSCloudTrailClient
