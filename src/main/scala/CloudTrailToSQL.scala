@@ -8,7 +8,8 @@ import com.fasterxml.jackson.databind.{ObjectMapper, JsonNode}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.hive.HiveContext
 import org.apache.spark.sql.{DataFrame, SQLContext}
-import org.apache.spark.{SparkContext, Logging}
+import org.apache.spark.SparkContext
+import org.apache.spark.internal.Logging
 import com.amazonaws.regions.Region
 import scala.collection.mutable
 import scala.collection.mutable.Buffer
@@ -47,6 +48,7 @@ import scala.collection.JavaConversions._
     sqlContext.sql("select distinct eventSource, eventName, userIdentity.principalId from cloudtrail where userIdentity.principalId = userIdentity.accountId").show(99999) //Find services and APIs called with root credentials
   */
 object CloudTrailToSQL extends Logging {
+  private val cloudTrailDatabaseName = "cloudtrail"
   private val cloudTrailTableName = "cloudtrail"
   
   /**Query CloudTrail to learn where (i.e., which S3 buckets) CloudTrail data is being stored.  If more than one trail 
@@ -193,7 +195,7 @@ object CloudTrailToSQL extends Logging {
     cloudtrailRecordsDataFrame.cache() //After your first query, all data will be cached in memory
 
     //Enable querying as the given table name via the SQL context
-    cloudtrailRecordsDataFrame.registerTempTable(cloudTrailTableName)
+    cloudtrailRecordsDataFrame.createOrReplaceTempView(cloudTrailDatabaseName + "." + cloudTrailTableName)
     cloudtrailRecordsDataFrame
   }
 
@@ -203,12 +205,12 @@ object CloudTrailToSQL extends Logging {
     val individualCloudTrailEvents = readCloudtrailRecordsFromRDD(rawCloudTrailData)
     val hiveCloudTrailDataFrame = hiveContext.read.json(individualCloudTrailEvents)
     hiveCloudTrailDataFrame.cache()
-    hiveCloudTrailDataFrame.write.saveAsTable(cloudTrailTableName+"hive")
+    hiveCloudTrailDataFrame.write.saveAsTable(cloudTrailDatabaseName + "." + cloudTrailTableName+"_hive")
     hiveCloudTrailDataFrame
   }
 
   def runSampleQuery(sqlContext:SQLContext) = {
-    sqlContext.sql("select distinct userIdentity.principalId, sourceIPAddress, userIdentity.accessKeyId from " + cloudTrailTableName + " order by accessKeyId").show(10000)
+    sqlContext.sql("use " + cloudTrailDatabaseName + "; select distinct userIdentity.principalId, sourceIPAddress, userIdentity.accessKeyId from " + cloudTrailDatabaseName + "." + cloudTrailTableName + " order by accessKeyId").show(10000)
   }
 
   private def isCompressedJson(name:String):Boolean = {
